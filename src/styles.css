@@ -1,0 +1,165 @@
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Inter:wght@400;500;600;700&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  /* —— Claude-inspired warm cream palette —— */
+  --bg-app:        #F0EEE6;   /* 整页背景 */
+  --bg-canvas:     #FAF9F5;   /* 主列底色（米色纸感）*/
+  --bg-card:       #FFFFFF;   /* 卡片白底 */
+  --bg-soft:       #F5F1E8;   /* 二级浅米 */
+  --bg-warm:       #F5EBDD;   /* 强调浅暖 */
+  --bg-error:      #FDEDE8;
+  --bg-input:      #FFFFFF;
+
+  --border-soft:   #E8E2D2;   /* 主要边框，比之前更淡 */
+  --border-hair:   #EFE9DB;   /* 极淡分割线 */
+  --border-warm:   #E5C5A0;   /* 强调色边框 */
+  --border-error:  #F5D5CC;
+
+  --accent:        #CC785C;   /* Claude 标志橙 */
+  --accent-soft:   #E5A57F;
+  --accent-deep:   #B85F4A;
+
+  --text-strong:   #1A1815;
+  --text:          #2A2620;
+  --text-mid:      #4D4942;
+  --text-muted:    #6F6E5E;
+  --text-light:    #9D9685;
+  --text-faint:    #BFB8A8;
+
+  --shadow-card:   0 1px 2px rgba(60, 50, 40, 0.04), 0 0 0 1px rgba(60, 50, 40, 0.03);
+  --shadow-card-hover: 0 4px 12px rgba(60, 50, 40, 0.06), 0 0 0 1px rgba(60, 50, 40, 0.04);
+  --shadow-input:  0 1px 2px rgba(60, 50, 40, 0.04);
+  --shadow-input-focus: 0 0 0 3px rgba(204, 120, 92, 0.12), 0 1px 2px rgba(60, 50, 40, 0.06);
+  --shadow-float:  0 8px 24px rgba(60, 50, 40, 0.10);
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  background: var(--bg-app);
+  color: var(--text);
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-feature-settings: 'cv11', 'ss01';
+}
+
+#root {
+  min-height: 100vh;
+}
+
+.font-mono {
+  font-family: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+.font-serif-cn {
+  /* Songti for the brand title only */
+  font-family: "Songti SC", "STSong", "Source Han Serif SC", "Noto Serif CJK SC", serif;
+}
+
+.title-cn {
+  letter-spacing: 0.08em;
+  font-weight: 600;
+}
+
+.brand {
+  font-family: "Songti SC", "STSong", serif;
+  letter-spacing: 0.12em;
+  font-weight: 600;
+}
+
+.scrollbar-hide::-webkit-scrollbar { display: none; }
+.scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+
+.custom-scroll::-webkit-scrollbar { width: 8px; }
+.custom-scroll::-webkit-scrollbar-track { background: transparent; }
+.custom-scroll::-webkit-scrollbar-thumb { background: rgba(140, 130, 110, 0.18); border-radius: 4px; }
+.custom-scroll::-webkit-scrollbar-thumb:hover { background: rgba(140, 130, 110, 0.32); }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.4; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1); }
+}
+.pulse-dot { animation: pulse-dot 1.4s infinite; }
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-up { animation: fade-up 0.35s ease-out forwards; }
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.shimmer-bar {
+  background: linear-gradient(90deg, transparent, rgba(204,120,92,0.3), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 1.8s infinite;
+}
+
+@keyframes indeterminate {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+.indeterminate { animation: indeterminate 1.5s ease-in-out infinite; }
+
+/* —— 通用卡片/浮层 —— */
+.card {
+  background: var(--bg-card);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  transition: box-shadow 0.2s ease;
+}
+.card-hover:hover {
+  box-shadow: var(--shadow-card-hover);
+}
+
+/* 文本里的链接等微弱强调 */
+.text-accent { color: var(--accent); }
+.bg-accent  { background: var(--accent); color: #fff; }
+.bg-accent-soft { background: var(--bg-warm); color: var(--accent-deep); }
+
+/* —— 内联 markdown 渲染样式 —— */
+.md-code { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; background: var(--bg-soft); color: var(--accent); padding: 0.1em 0.35em; border-radius: 4px; }
+
+/* —— Markdown 内容样式（保留旧 marked 渲染 CSS 以防需要）—— */
+.markdown-body {
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.75;
+  word-wrap: break-word;
+}
+.markdown-body > *:first-child { margin-top: 0; }
+.markdown-body > *:last-child { margin-bottom: 0; }
+.markdown-body p { margin: 0.5em 0; }
+.markdown-body h1 { font-size: 18px; font-weight: 600; margin: 1.25em 0 0.5em; color: var(--text-strong); }
+.markdown-body h2 { font-size: 16px; font-weight: 600; margin: 1.25em 0 0.5em; color: var(--text-strong); }
+.markdown-body h3 { font-size: 15px; font-weight: 600; margin: 1em 0 0.4em; color: var(--text-strong); }
+.markdown-body h4 { font-size: 14px; font-weight: 600; margin: 0.75em 0 0.3em; color: var(--text-strong); }
+.markdown-body h5,
+.markdown-body h6 { font-size: 13px; font-weight: 600; margin: 0.75em 0 0.3em; color: var(--text-mid); }
+.markdown-body strong { font-weight: 600; color: var(--text-strong); }
+.markdown-body em { font-style: italic; }
+.markdown-body ul { list-style: disc; padding-left: 1.25em; margin: 0.5em 0; }
+.markdown-body ol { list-style: decimal; padding-left: 1.25em; margin: 0.5em 0; }
+.markdown-body li { margin: 0.2em 0; padding-left: 0.25em; }
+.markdown-body li > p { margin: 0.2em 0; }
+.markdown-body hr { border: none; border-top: 1px solid var(--border-hair); margin: 1em 0; }
+.markdown-body blockquote { border-left: 2px solid var(--border-warm); padding: 0 0 0 12px; margin: 0.75em 0; color: var(--text-muted); font-size: 13.5px; font-style: italic; }
+.markdown-body code { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 13px; background: var(--bg-soft); color: var(--accent); padding: 0.1em 0.35em; border-radius: 4px; }
+.markdown-body pre { font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12.5px; background: var(--bg-soft); color: var(--text); padding: 12px; margin: 0.75em 0; border-radius: 8px; overflow-x: auto; }
+.markdown-body pre code { background: transparent; color: inherit; padding: 0; border-radius: 0; font-size: inherit; }
+.markdown-body table { font-size: 13px; border-collapse: collapse; margin: 0.75em 0; min-width: 100%; }
+.markdown-body th, .markdown-body td { padding: 6px 12px; border: 1px solid var(--border-hair); text-align: left; vertical-align: top; }
+.markdown-body thead { background: var(--bg-soft); }
+.markdown-body th { font-weight: 600; color: var(--text-strong); }
+.markdown-body a { color: var(--accent); text-decoration: underline; }

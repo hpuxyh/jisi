@@ -1,0 +1,11 @@
+# Cloudflare Pages 项目配置
+# 实际部署用 `npx wrangler pages deploy dist --project-name=jisi`
+# KV 绑定和环境变量在 Cloudflare 控制台里设置（不要写在这里，免得敏感信息进 Git）
+
+name = "jisi"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-10-01"
+
+[[kv_namespaces]]
+binding = "QUOTA_KV"
+id = "4ff8ef05eeb8488bbcf9071263536471"
