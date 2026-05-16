@@ -19,6 +19,7 @@ export const MODELS = [
     endpoint: 'https://aihubmix.com/v1/chat/completions',
     keyEnv: 'GPT_KEY',
     tokensParam: 'max_completion_tokens', // GPT-5+ / o1 / o3 等新模型必须用这个字段
+    maxTokens: 16000, // 推理模型：思考本身消耗 token，需要大额度
   },
   {
     id: 'doubao',
@@ -129,7 +130,7 @@ export async function callModel(config, promptOrMessages, systemPrompt, env, opt
   if (!apiKey) throw new Error(`服务端未配置 ${config.name} 的 Key`);
 
   const systemMsg = buildSystemMessage(systemPrompt);
-  const maxTokens = options.maxTokens || 2500;
+  const maxTokens = options.maxTokens || config.maxTokens || 2500;
 
   // 归一化：把字符串包成单条 user 消息
   const inputMessages = Array.isArray(promptOrMessages)
@@ -185,8 +186,19 @@ export async function callModel(config, promptOrMessages, systemPrompt, env, opt
     throw new Error(`HTTP ${r.status} ${errText.slice(0, 120)}`);
   }
   const data = await r.json();
+  const text = data.choices?.[0]?.message?.content || '';
+  const finishReason = data.choices?.[0]?.finish_reason;
+  const usage = data.usage || {};
+  // 推理模型空回答：思考耗光了 token 配额
+  if (!text.trim()) {
+    const reasoningTokens = usage.completion_tokens_details?.reasoning_tokens;
+    if (finishReason === 'length' || reasoningTokens) {
+      throw new Error(`空回答：思考占用了 ${reasoningTokens || usage.completion_tokens || '?'} tokens，没留出输出预算（finish: ${finishReason}）。建议简化提问或在配置里调高 maxTokens`);
+    }
+    throw new Error(`空回答（finish: ${finishReason || '未知'}）`);
+  }
   return {
-    text: data.choices?.[0]?.message?.content || '',
+    text,
     duration: Date.now() - startTime,
     tokens: data.usage?.total_tokens,
   };
