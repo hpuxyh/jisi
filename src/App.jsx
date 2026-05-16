@@ -1310,13 +1310,70 @@ function renderInline(text) {
   return s;
 }
 
+// 解析表格行：| a | b | c | → ['a','b','c']
+function parseTableRow(line) {
+  let s = line.trim();
+  if (s.startsWith('|')) s = s.slice(1);
+  if (s.endsWith('|')) s = s.slice(0, -1);
+  return s.split('|').map(c => c.trim());
+}
+
+// 判断一行是否是表格分隔行：| --- | :---: | ---: |
+function isTableSeparator(line) {
+  const s = line.trim();
+  if (!s.includes('|') || !s.includes('-')) return false;
+  return /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(s);
+}
+
+// 从分隔行解析对齐：left/center/right
+function parseTableAligns(sepLine) {
+  return parseTableRow(sepLine).map(cell => {
+    const t = cell.trim();
+    if (t.startsWith(':') && t.endsWith(':')) return 'center';
+    if (t.endsWith(':')) return 'right';
+    return 'left';
+  });
+}
+
+// 如果一行内嵌了「换行被吃掉的表格」（如 `| h | h ||---|---|| a | a |`），把它拆成多行
+function explodeInlineTable(line) {
+  // 检测特征：包含 `||---` 或 `|---|---|` 等连续分隔模式
+  if (!/\|\s*-{3,}/.test(line)) return [line];
+  // 在每个 `||` 边界（一行表格的结束 + 下一行开始）切分
+  // 思路：当遇到 `|---...---|` 分隔结构，前后断开
+  const parts = line
+    .replace(/\|\s*(:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+)\|/g, '\n|$1|\n')  // 分隔行独立成一行
+    .replace(/\|\s*\|/g, '|\n|')  // `||` → 行结束 + 行开始
+    .split('\n')
+    .map(s => s.trim())
+    .filter(Boolean);
+  return parts.length > 1 ? parts : [line];
+}
+
 function ResponseText({ text }) {
   if (!text) return null;
-  const lines = text.split('\n');
+  // 预处理：把"行内表格"还原成多行
+  const rawLines = text.split('\n');
+  const lines = [];
+  for (const l of rawLines) lines.push(...explodeInlineTable(l));
+
   const blocks = [];
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
+    // 表格（先于其它检测）
+    if (line.includes('|') && i + 1 < lines.length && isTableSeparator(lines[i + 1])) {
+      const headers = parseTableRow(line);
+      const aligns = parseTableAligns(lines[i + 1]);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && lines[i].trim().startsWith('|') && !isTableSeparator(lines[i])) {
+        rows.push(parseTableRow(lines[i]));
+        i++;
+      }
+      blocks.push({ type: 'table', headers, aligns, rows });
+      continue;
+    }
     // 水平线
     if (/^---+$/.test(line.trim())) { blocks.push({ type: 'hr' }); i++; continue; }
     // 标题
@@ -1357,7 +1414,7 @@ function ResponseText({ text }) {
     // 普通段落（合并连续非空行）
     const buf = [line];
     i++;
-    while (i < lines.length && lines[i].trim() !== '' && !/^(#{1,6}\s|>\s?|\s*[-*+]\s|\s*\d+\.\s|---+$)/.test(lines[i])) {
+    while (i < lines.length && lines[i].trim() !== '' && !/^(#{1,6}\s|>\s?|\s*[-*+]\s|\s*\d+\.\s|---+$|\|)/.test(lines[i])) {
       buf.push(lines[i]); i++;
     }
     blocks.push({ type: 'p', text: buf.join('\n') });
@@ -1384,6 +1441,28 @@ function ResponseText({ text }) {
           <blockquote key={idx} style={{ borderLeft: '2px solid #E5C5A0', padding: '0 12px', margin: '10px 0', color: '#6F6E5E', fontSize: 13.5, fontStyle: 'italic' }} dangerouslySetInnerHTML={{ __html: renderInline(b.text) }} />
         );
         if (b.type === 'br') return <div key={idx} style={{ height: 4 }} />;
+        if (b.type === 'table') return (
+          <div key={idx} style={{ margin: '10px 0', overflowX: 'auto' }}>
+            <table style={{ borderCollapse: 'collapse', minWidth: '100%', fontSize: 13 }}>
+              <thead style={{ background: '#F5F1E8' }}>
+                <tr>
+                  {b.headers.map((h, k) => (
+                    <th key={k} style={{ padding: '6px 12px', border: '1px solid #EFE9DB', textAlign: b.aligns[k] || 'left', color: '#1A1815', fontWeight: 600, verticalAlign: 'top' }} dangerouslySetInnerHTML={{ __html: renderInline(h) }} />
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {b.rows.map((row, r) => (
+                  <tr key={r}>
+                    {row.map((cell, k) => (
+                      <td key={k} style={{ padding: '6px 12px', border: '1px solid #EFE9DB', textAlign: b.aligns[k] || 'left', verticalAlign: 'top' }} dangerouslySetInnerHTML={{ __html: renderInline(cell) }} />
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
         return <p key={idx} style={{ margin: '6px 0' }} dangerouslySetInnerHTML={{ __html: renderInline(b.text) }} />;
       })}
     </div>
