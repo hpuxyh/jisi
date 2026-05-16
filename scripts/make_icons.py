@@ -78,12 +78,38 @@ def make_icon(size):
     return out
 
 
+def make_maskable_icon(size):
+    """maskable 图标：内容居中，预留 ~20% 安全边距给系统裁圆/裁形"""
+    # 整张是渐变（系统裁切后边缘看不到白边）
+    bg = make_gradient(size, (212, 165, 116), (184, 132, 90))
+    # sparkle 缩到中心 60%，给系统裁切留余地
+    draw_sparkle(bg, size / 2, size / 2, size * 0.40)
+    return bg
+
+
 if __name__ == '__main__':
     import sys
     out_dir = sys.argv[1] if len(sys.argv) > 1 else '.'
+    # 浏览器 favicon
     for s in [16, 32, 48, 128]:
         icon = make_icon(s)
-        path = f'{out_dir}/icon-{s}.png'
+        path = f'{out_dir}/favicon-{s}.png'
         icon.save(path)
         print(f'  {path}')
+    # PWA Android / 通用
+    for s in [192, 512]:
+        icon = make_icon(s)
+        path = f'{out_dir}/pwa-{s}.png'
+        icon.save(path)
+        print(f'  {path}')
+    # PWA maskable（给 Android 自适应图标）
+    for s in [192, 512]:
+        icon = make_maskable_icon(s)
+        path = f'{out_dir}/pwa-{s}-maskable.png'
+        icon.save(path)
+        print(f'  {path}')
+    # Apple touch icon（iOS 添加到主屏使用）
+    icon = make_icon(180)
+    icon.save(f'{out_dir}/apple-touch-icon.png')
+    print(f'  {out_dir}/apple-touch-icon.png')
     print('done')
