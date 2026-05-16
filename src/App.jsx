@@ -165,6 +165,8 @@ export default function App() {
         if (state.prefs.systemPrompt) setSystemPrompt({ ...DEFAULT_SYSTEM_PROMPT, ...state.prefs.systemPrompt });
         if (state.prefs.summaryModelId && availableIds.includes(state.prefs.summaryModelId)) {
           setSummaryModelId(state.prefs.summaryModelId);
+        } else if (availableIds.includes('deepseek')) {
+          setSummaryModelId('deepseek');
         } else if (availableIds.length > 0) {
           setSummaryModelId(availableIds[0]);
         }
@@ -175,6 +177,8 @@ export default function App() {
         if (Array.isArray(state.prefs.dimensions) && state.prefs.dimensions.length > 0) {
           setDimensions(state.prefs.dimensions);
         }
+      } else if (availableIds.includes('deepseek')) {
+        setSummaryModelId('deepseek');
       } else if (availableIds.length > 0) {
         setSummaryModelId(availableIds[0]);
       }
