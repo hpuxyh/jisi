@@ -18,6 +18,7 @@ export const MODELS = [
     provider: 'openai',
     endpoint: 'https://aihubmix.com/v1/chat/completions',
     keyEnv: 'GPT_KEY',
+    tokensParam: 'max_completion_tokens', // GPT-5+ / o1 / o3 等新模型必须用这个字段
   },
   {
     id: 'doubao',
@@ -168,13 +169,16 @@ export async function callModel(config, promptOrMessages, systemPrompt, env, opt
   if (systemMsg) messages.push({ role: 'system', content: systemMsg });
   messages.push(...inputMessages);
 
+  const body = { model: config.model, messages };
+  const tokensField = config.tokensParam || 'max_tokens';
+  body[tokensField] = maxTokens;
   const r = await fetch(config.endpoint, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({ model: config.model, messages, max_tokens: maxTokens }),
+    body: JSON.stringify(body),
   });
   if (!r.ok) {
     const errText = await r.text().catch(() => '');

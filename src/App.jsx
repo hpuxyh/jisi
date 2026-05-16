@@ -766,7 +766,13 @@ function QuotaBadge({ quota }) {
 function QuestionInput({ value, onChange, onSubmit, onNewConversation, modelCount, hasSystemPrompt, onOpenSettings, loading, quotaExhausted, turnsUsed, reachedLimit }) {
   const [focused, setFocused] = useState(false);
   const disabled = loading || quotaExhausted || modelCount === 0 || reachedLimit;
-  const handleKey = (e) => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); onSubmit(); } };
+  const handleKey = (e) => {
+    // Enter 发送，Shift+Enter 换行；中文输入法选字阶段不触发
+    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+      e.preventDefault();
+      onSubmit();
+    }
+  };
 
   if (reachedLimit) {
     return (
@@ -794,7 +800,7 @@ function QuestionInput({ value, onChange, onSubmit, onNewConversation, modelCoun
         </div>
         <div className="flex items-center gap-2 font-mono text-[10px]" style={{ color: '#9D9685' }}>
           <span>已问 <span style={{ color: turnsUsed >= MAX_TURNS - 2 ? '#CC785C' : '#6F6E5E', fontWeight: 600 }}>{turnsUsed}</span>/{MAX_TURNS}</span>
-          <span style={{ color: '#BFB8A8' }}>⌘ + ↵</span>
+          <span style={{ color: '#BFB8A8' }}>↵ 发送 · ⇧↵ 换行</span>
         </div>
       </div>
       <div
