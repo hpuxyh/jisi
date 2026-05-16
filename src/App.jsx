@@ -219,9 +219,13 @@ export default function App() {
     }
   }, [showSummaryTab, activeTabId, enabledModels]);
 
-  // 滚动锚点：每次 turns 变化或 loading 变化时滚到底
-  const turnsBottomRef = useRef(null);
-  useEffect(() => { turnsBottomRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [turns.length, loading, activeTabId]);
+  // 滚动锚点：每次 turns 变化或切 Tab 时，把最新一轮的开头滚到视口顶部
+  const lastTurnRef = useRef(null);
+  useEffect(() => {
+    if (turns.length > 0 && lastTurnRef.current) {
+      lastTurnRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [turns.length, activeTabId]);
 
   // 切换对话时：除最后一轮外其它默认折叠
   useEffect(() => {
@@ -540,9 +544,9 @@ export default function App() {
                   onToggleCollapse={toggleTurnCollapsed}
                   onCopyTurn={copyTurn}
                   onRetryModel={retryModel}
+                  lastTurnRef={lastTurnRef}
                 />
               )}
-              <div ref={turnsBottomRef} />
             </div>
             {showScrollTop && (
               <button
@@ -947,7 +951,7 @@ function ModelStatusIndicator({ state, color }) {
 // ============================================================
 // 轮次列表（按 tab 切换显示当前模型的所有 Q&A）
 // ============================================================
-function TurnsList({ turns, activeTabId, activeModel, enabledModels, summaryModelMeta, onSelectTab, collapsedTurnIds, onToggleCollapse, onCopyTurn, onRetryModel }) {
+function TurnsList({ turns, activeTabId, activeModel, enabledModels, summaryModelMeta, onSelectTab, collapsedTurnIds, onToggleCollapse, onCopyTurn, onRetryModel, lastTurnRef }) {
   return (
     <div className="px-5 py-6 space-y-6">
       {turns.map((t, idx) => (
@@ -964,19 +968,20 @@ function TurnsList({ turns, activeTabId, activeModel, enabledModels, summaryMode
           onToggleCollapse={() => onToggleCollapse(t.id)}
           onCopyTurn={() => onCopyTurn(t)}
           onRetryModel={(modelId) => onRetryModel(t.id, modelId)}
+          innerRef={idx === turns.length - 1 ? lastTurnRef : null}
         />
       ))}
     </div>
   );
 }
 
-function TurnCard({ turn, index, activeTabId, activeModel, enabledModels, summaryModelMeta, onSelectTab, collapsed, onToggleCollapse, onCopyTurn, onRetryModel }) {
+function TurnCard({ turn, index, activeTabId, activeModel, enabledModels, summaryModelMeta, onSelectTab, collapsed, onToggleCollapse, onCopyTurn, onRetryModel, innerRef }) {
   const turnTokens = Object.values(turn.responses || {}).reduce((sum, r) => sum + (r?.tokens || 0), 0);
   const turnDuration = Math.max(...Object.values(turn.responses || {}).map(r => r?.duration || 0), 0);
   const successCount = Object.values(turn.responses || {}).filter(r => r?.status === 'done').length;
   const allDone = Object.values(turn.responses || {}).every(r => r?.status === 'done' || r?.status === 'error');
   return (
-    <div className="fade-up">
+    <div className="fade-up" ref={innerRef}>
       <QuestionBubble index={index} text={turn.question} onCopyTurn={onCopyTurn} />
       {allDone && (turnTokens > 0 || turnDuration > 0) && (
         <div className="flex items-center gap-3 mt-1.5 ml-7 font-mono text-[10px]" style={{ color: '#9D9685' }}>
