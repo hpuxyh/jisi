@@ -564,7 +564,7 @@ export default function App() {
           </div>
 
           {/* 底部输入框 */}
-          <div className="shrink-0 px-4 pt-3 pb-4" style={{ background: '#FAF9F5' }}>
+          <div className="shrink-0 px-3 sm:px-4 pt-2 sm:pt-3 pb-3 sm:pb-4" style={{ background: '#FAF9F5' }}>
             <QuestionInput
               value={question}
               onChange={setQuestion}
@@ -705,7 +705,7 @@ function formatTime(ts) {
 function Header({ title, quota, onOpenSettings, onToggleSidebar, hasTurns, onExport }) {
   const isDefault = !title || title === '新对话';
   return (
-    <header className="flex items-center justify-between px-5 py-4 shrink-0" style={{ borderBottom: '1px solid var(--border-hair)' }}>
+    <header className="flex items-center justify-between px-3 sm:px-5 py-3 sm:py-4 shrink-0 gap-2" style={{ borderBottom: '1px solid var(--border-hair)' }}>
       <div className="flex items-center gap-3 min-w-0">
         <button onClick={onToggleSidebar} className="md:hidden w-8 h-8 -ml-1 rounded-md flex items-center justify-center" style={{ color: '#6F6E5E' }}>
           <Menu className="w-5 h-5" />
@@ -713,7 +713,7 @@ function Header({ title, quota, onOpenSettings, onToggleSidebar, hasTurns, onExp
         {isDefault ? (
           <div className="flex items-center gap-2 min-w-0">
             <span className="brand text-[19px]" style={{ color: '#1A1815' }}>集思</span>
-            <span className="text-[11px]" style={{ color: '#9D9685', letterSpacing: '0.18em' }}>一问 · 多答 · 比对</span>
+            <span className="hidden sm:inline text-[11px]" style={{ color: '#9D9685', letterSpacing: '0.18em' }}>一问 · 多答 · 比对</span>
           </div>
         ) : (
           <div className="text-[14px] font-medium truncate" style={{ color: '#1A1815' }}>{title}</div>
@@ -867,7 +867,7 @@ function QuotaExhaustedBanner({ quota }) {
 function ModelTabs({ models, activeId, onSelect, turns, showSummaryTab, loading }) {
   const lastTurn = turns[turns.length - 1];
   return (
-    <div className="flex overflow-x-auto scrollbar-hide gap-0.5 px-2 py-2">
+    <div className="flex overflow-x-auto scrollbar-hide gap-0.5 px-2 py-1.5 sm:py-2">
       {showSummaryTab && (
         <SummaryTab
           active={activeId === SUMMARY_TAB_ID}
@@ -953,7 +953,7 @@ function ModelStatusIndicator({ state, color }) {
 // ============================================================
 function TurnsList({ turns, activeTabId, activeModel, enabledModels, summaryModelMeta, onSelectTab, collapsedTurnIds, onToggleCollapse, onCopyTurn, onRetryModel, lastTurnRef }) {
   return (
-    <div className="px-5 py-6 space-y-6">
+    <div className="px-3 sm:px-5 py-4 sm:py-6 space-y-5 sm:space-y-6">
       {turns.map((t, idx) => (
         <TurnCard
           key={t.id}
@@ -1080,7 +1080,7 @@ function ResponseBlock({ model, state, collapsed, onToggleCollapse, onRetry }) {
         )}
       </div>
       {!collapsed && (
-        <div className="px-5 py-4">
+        <div className="px-3 sm:px-5 py-3 sm:py-4">
           {!state && <div className="text-xs" style={{ color: '#9D9685' }}>此模型未参与本轮</div>}
           {state?.status === 'loading' && <LoadingState color={model.color} />}
           {state?.status === 'error' && <ErrorState message={state.error} onRetry={onRetry} />}
@@ -1142,7 +1142,7 @@ function SummaryBlock({ summary, summaryModelMeta, onSelectTab, collapsed, onTog
         )}
       </div>
       {!collapsed && (
-        <div className="px-5 py-4">
+        <div className="px-3 sm:px-5 py-3 sm:py-4">
           {summary.status === 'loading' && <SummaryGenerating modelName={summaryModelMeta?.name} compact />}
           {summary.status === 'insufficient' && (
             <div className="text-xs" style={{ color: '#6F6E5E' }}>
