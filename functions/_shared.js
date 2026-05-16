@@ -11,6 +11,15 @@ export const MODELS = [
     keyEnv: 'CLAUDE_KEY',
   },
   {
+    id: 'gpt',
+    name: 'GPT',
+    color: '#10a37f',
+    model: 'gpt-5.5',
+    provider: 'openai',
+    endpoint: 'https://aihubmix.com/v1/chat/completions',
+    keyEnv: 'GPT_KEY',
+  },
+  {
     id: 'doubao',
     name: '豆包',
     color: '#2563eb',
