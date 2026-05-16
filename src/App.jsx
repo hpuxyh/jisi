@@ -476,7 +476,7 @@ export default function App() {
 
       <div className="flex-1 flex justify-center">
         <div
-          className="w-full max-w-[760px] flex flex-col"
+          className="w-full max-w-[920px] flex flex-col"
           style={{ background: '#FAF9F5', borderLeft: '1px solid var(--border-hair)', borderRight: '1px solid var(--border-hair)', minHeight: '100vh' }}
         >
           <Header
@@ -867,7 +867,7 @@ function QuotaExhaustedBanner({ quota }) {
 function ModelTabs({ models, activeId, onSelect, turns, showSummaryTab, loading }) {
   const lastTurn = turns[turns.length - 1];
   return (
-    <div className="flex overflow-x-auto scrollbar-hide gap-1 px-3 py-2">
+    <div className="flex overflow-x-auto scrollbar-hide gap-0.5 px-2 py-2">
       {showSummaryTab && (
         <SummaryTab
           active={activeId === SUMMARY_TAB_ID}
@@ -884,7 +884,7 @@ function ModelTabs({ models, activeId, onSelect, turns, showSummaryTab, loading 
           <button
             key={m.id}
             onClick={() => onSelect(m.id)}
-            className="relative shrink-0 px-3.5 py-1.5 rounded-full transition-all flex items-center gap-1.5"
+            className="relative shrink-0 px-2.5 py-1 rounded-full transition-all flex items-center gap-1"
             style={{
               background: active ? '#FFFFFF' : 'transparent',
               border: `1px solid ${active ? 'var(--border-soft)' : 'transparent'}`,
@@ -894,7 +894,7 @@ function ModelTabs({ models, activeId, onSelect, turns, showSummaryTab, loading 
             onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = 'transparent'; }}
           >
             <ModelStatusIndicator state={state} color={m.color} />
-            <span className="text-[12px] font-medium tracking-wide whitespace-nowrap" style={{ color: active ? '#1A1815' : '#6F6E5E' }}>{m.name}</span>
+            <span className="text-[12px] font-medium whitespace-nowrap" style={{ color: active ? '#1A1815' : '#6F6E5E' }}>{m.name}</span>
           </button>
         );
       })}
@@ -908,7 +908,7 @@ function SummaryTab({ active, onClick, models, summary, loading }) {
   return (
     <button
       onClick={onClick}
-      className="relative shrink-0 px-3.5 py-1.5 rounded-full transition-all flex items-center gap-1.5"
+      className="relative shrink-0 px-2.5 py-1 rounded-full transition-all flex items-center gap-1"
       style={{
         background: active ? '#FFFFFF' : 'transparent',
         border: `1px solid ${active ? '#E5C5A0' : 'transparent'}`,
@@ -919,10 +919,10 @@ function SummaryTab({ active, onClick, models, summary, loading }) {
     >
       <div className="flex items-center">
         {models.slice(0, 5).map((m, i) => (
-          <div key={m.id} className="w-2 h-2 rounded-full" style={{ background: m.color, marginLeft: i > 0 ? '-4px' : 0, border: `1.5px solid ${active ? '#FFFFFF' : '#FAF9F5'}`, zIndex: 5 - i }} />
+          <div key={m.id} className="w-1.5 h-1.5 rounded-full" style={{ background: m.color, marginLeft: i > 0 ? '-3px' : 0, border: `1.5px solid ${active ? '#FFFFFF' : '#FAF9F5'}`, zIndex: 5 - i }} />
         ))}
       </div>
-      <span className="text-[12px] font-semibold tracking-wide whitespace-nowrap" style={{ color: active ? '#CC785C' : '#3D3829' }}>对比</span>
+      <span className="text-[12px] font-semibold whitespace-nowrap" style={{ color: active ? '#CC785C' : '#3D3829' }}>对比</span>
       {loading && summary?.status === 'loading' && (
         <Loader2 className="w-3 h-3 animate-spin" style={{ color: '#CC785C' }} />
       )}
