@@ -22,6 +22,15 @@ export const MODELS = [
     maxTokens: 16000, // 推理模型：思考本身消耗 token，需要大额度
   },
   {
+    id: 'gemini',
+    name: 'Gemini',
+    color: '#ec4899',
+    model: 'gemini-3.1-flash-lite',
+    provider: 'openai',
+    endpoint: 'https://aihubmix.com/v1/chat/completions',
+    keyEnv: 'GEMINI_KEY',
+  },
+  {
     id: 'doubao',
     name: '豆包',
     color: '#2563eb',
