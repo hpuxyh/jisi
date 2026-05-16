@@ -1318,11 +1318,11 @@ function parseTableRow(line) {
   return s.split('|').map(c => c.trim());
 }
 
-// 判断一行是否是表格分隔行：| --- | :---: | ---: |
+// 判断一行是否是表格分隔行：| --- | :---: | ---: |（兼容 1+ 短横线）
 function isTableSeparator(line) {
   const s = line.trim();
   if (!s.includes('|') || !s.includes('-')) return false;
-  return /^\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(s);
+  return /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)+\|?\s*$/.test(s);
 }
 
 // 从分隔行解析对齐：left/center/right
@@ -1337,13 +1337,11 @@ function parseTableAligns(sepLine) {
 
 // 如果一行内嵌了「换行被吃掉的表格」（如 `| h | h ||---|---|| a | a |`），把它拆成多行
 function explodeInlineTable(line) {
-  // 检测特征：包含 `||---` 或 `|---|---|` 等连续分隔模式
-  if (!/\|\s*-{3,}/.test(line)) return [line];
-  // 在每个 `||` 边界（一行表格的结束 + 下一行开始）切分
-  // 思路：当遇到 `|---...---|` 分隔结构，前后断开
+  // 检测特征：包含 `|--|` 等连续分隔模式
+  if (!/\|\s*-+/.test(line)) return [line];
   const parts = line
-    .replace(/\|\s*(:?-{3,}:?\s*(?:\|\s*:?-{3,}:?\s*)+)\|/g, '\n|$1|\n')  // 分隔行独立成一行
-    .replace(/\|\s*\|/g, '|\n|')  // `||` → 行结束 + 行开始
+    .replace(/\|\s*(:?-+:?\s*(?:\|\s*:?-+:?\s*)+)\|/g, '\n|$1|\n')
+    .replace(/\|\s*\|/g, '|\n|')
     .split('\n')
     .map(s => s.trim())
     .filter(Boolean);
