@@ -220,3 +220,103 @@ export function withTimeout(promise, ms, label) {
     new Promise((_, reject) => setTimeout(() => reject(new Error(`${label} 超时（${ms / 1000}s）`)), ms)),
   ]);
 }
+
+// —————————————————————————————————————————————————————————
+// 流式调用：调用单个模型，边收边通过 onChunk 推送文本增量
+// 解析 OpenAI 兼容 SSE 协议（所有模型现在都走 openai provider）
+// 返回 { text, duration, tokens? } 在流结束后 resolve
+// —————————————————————————————————————————————————————————
+export async function callModelStream(config, promptOrMessages, systemPrompt, env, onChunk, options = {}) {
+  const startTime = Date.now();
+  const apiKey = env[config.keyEnv];
+  if (!apiKey) throw new Error(`服务端未配置 ${config.name} 的 Key`);
+
+  const systemMsg = buildSystemMessage(systemPrompt);
+  const maxTokens = options.maxTokens || config.maxTokens || 2500;
+  const inputMessages = Array.isArray(promptOrMessages)
+    ? promptOrMessages
+    : [{ role: 'user', content: promptOrMessages }];
+
+  // 拼请求体
+  const messages = [];
+  if (systemMsg) messages.push({ role: 'system', content: systemMsg });
+  messages.push(...inputMessages);
+
+  const body = { model: config.model, messages, stream: true, stream_options: { include_usage: true } };
+  const tokensField = config.tokensParam || 'max_tokens';
+  body[tokensField] = maxTokens;
+
+  const r = await fetch(config.endpoint, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${apiKey}`,
+      'Accept': 'text/event-stream',
+    },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const errText = await r.text().catch(() => '');
+    throw new Error(`HTTP ${r.status} ${errText.slice(0, 120)}`);
+  }
+  if (!r.body) throw new Error('流式响应无 body');
+
+  const reader = r.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let fullText = '';
+  let totalTokens = 0;
+  let finishReason = null;
+  let reasoningTokens = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      // SSE 块用 \n\n 分隔
+      let idx;
+      while ((idx = buf.indexOf('\n\n')) !== -1) {
+        const block = buf.slice(0, idx);
+        buf = buf.slice(idx + 2);
+        // 一个块里可能有多行，每行 "data: ..."；我们只关心 data 行
+        for (const line of block.split('\n')) {
+          if (!line.startsWith('data:')) continue;
+          const payload = line.slice(5).trim();
+          if (payload === '' || payload === '[DONE]') continue;
+          let event;
+          try { event = JSON.parse(payload); } catch (e) { continue; }
+          const choice = event.choices?.[0];
+          if (choice) {
+            const delta = choice.delta?.content;
+            if (typeof delta === 'string' && delta) {
+              fullText += delta;
+              try { onChunk?.(delta); } catch (e) {}
+            }
+            if (choice.finish_reason) finishReason = choice.finish_reason;
+          }
+          if (event.usage) {
+            totalTokens = event.usage.total_tokens || totalTokens;
+            reasoningTokens = event.usage.completion_tokens_details?.reasoning_tokens || reasoningTokens;
+          }
+        }
+      }
+    }
+  } finally {
+    try { reader.releaseLock(); } catch (e) {}
+  }
+
+  // 空回答检测（推理模型可能思考耗光预算）
+  if (!fullText.trim()) {
+    if (finishReason === 'length' || reasoningTokens) {
+      throw new Error(`空回答：思考占用了 ${reasoningTokens || '?'} tokens，没留出输出预算（finish: ${finishReason}）`);
+    }
+    throw new Error(`空回答（finish: ${finishReason || '未知'}）`);
+  }
+
+  return {
+    text: fullText,
+    duration: Date.now() - startTime,
+    tokens: totalTokens || undefined,
+  };
+}

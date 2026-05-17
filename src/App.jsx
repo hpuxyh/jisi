@@ -6,7 +6,7 @@ import {
   CalendarClock, Zap, ChevronDown, ChevronUp, ChevronRight, ArrowUp,
   Download, RefreshCw,
 } from 'lucide-react';
-import { fetchModels, fetchQuota, ask } from './api.js';
+import { fetchModels, fetchQuota, askStream } from './api.js';
 
 const STORAGE_KEY = 'jisi_saas_v2';
 const LEGACY_KEY = 'jisi_saas_prefs_v1';
@@ -276,6 +276,51 @@ export default function App() {
     try { await navigator.clipboard.writeText(md); return true; } catch (e) { return false; }
   }, [models]);
 
+  // 流式追加一段文字到指定模型回答
+  const appendModelChunk = useCallback((convId, turnId, modelId, chunk) => {
+    setConversations(prev => prev.map(c => {
+      if (c.id !== convId) return c;
+      return { ...c, turns: c.turns.map(t => {
+        if (t.id !== turnId) return t;
+        const cur = t.responses?.[modelId];
+        const text = (cur?.text || '') + chunk;
+        return { ...t, responses: { ...t.responses, [modelId]: { status: 'streaming', text } } };
+      })};
+    }));
+  }, []);
+
+  const appendSummaryChunk = useCallback((convId, turnId, chunk) => {
+    setConversations(prev => prev.map(c => {
+      if (c.id !== convId) return c;
+      return { ...c, turns: c.turns.map(t => {
+        if (t.id !== turnId) return t;
+        const cur = t.summary;
+        const text = (cur?.text || '') + chunk;
+        return { ...t, summary: { ...cur, status: 'streaming', text } };
+      })};
+    }));
+  }, []);
+
+  const setModelResponse = useCallback((convId, turnId, modelId, patch) => {
+    setConversations(prev => prev.map(c => {
+      if (c.id !== convId) return c;
+      return { ...c, turns: c.turns.map(t => {
+        if (t.id !== turnId) return t;
+        return { ...t, responses: { ...t.responses, [modelId]: { ...(t.responses?.[modelId] || {}), ...patch } } };
+      })};
+    }));
+  }, []);
+
+  const setTurnSummary = useCallback((convId, turnId, patch) => {
+    setConversations(prev => prev.map(c => {
+      if (c.id !== convId) return c;
+      return { ...c, turns: c.turns.map(t => {
+        if (t.id !== turnId) return t;
+        return { ...t, summary: { ...(t.summary || {}), ...patch } };
+      })};
+    }));
+  }, []);
+
   const retryModel = useCallback(async (turnId, modelId) => {
     const conv = conversations.find(c => c.id === activeConversationId);
     if (!conv) return;
@@ -285,38 +330,27 @@ export default function App() {
     const m = models.find(x => x.id === modelId);
     if (!m) return;
 
-    // 把这一轮里目标模型设置回 loading
-    updateTurn(activeConversationId, turnId, {
-      responses: { ...turn.responses, [modelId]: { status: 'loading' } },
-    });
-
-    // history = 截至本轮之前的所有轮（不含本轮）
+    setModelResponse(activeConversationId, turnId, modelId, { status: 'loading', text: '', error: null });
     const history = conv.turns.slice(0, turnIndex).map(turnToHistoryItem);
 
     try {
-      const data = await ask({
+      await askStream({
         question: turn.question,
         systemPrompt: hasSystemPrompt ? systemPrompt : null,
         modelIds: [modelId],
         summaryModelId: undefined,
         history,
+        onEvent: (event, data) => {
+          if (event === 'quota') setQuota(prev => ({ ...prev, ...data }));
+          else if (event === 'model_chunk') appendModelChunk(activeConversationId, turnId, modelId, data.text);
+          else if (event === 'model_done') setModelResponse(activeConversationId, turnId, modelId, { status: 'done', text: data.text, duration: data.duration, tokens: data.tokens });
+          else if (event === 'model_error') setModelResponse(activeConversationId, turnId, modelId, { status: 'error', error: data.error });
+        },
       });
-      const r = (data.results || [])[0];
-      const next = r?.ok
-        ? { status: 'done', text: r.text, duration: r.duration, tokens: r.tokens }
-        : { status: 'error', error: r?.error || '失败' };
-      // 重新读最新 conv（因为可能有别的 turn 也在 loading）
-      setConversations(prev => prev.map(c => {
-        if (c.id !== activeConversationId) return c;
-        return { ...c, turns: c.turns.map(t => t.id !== turnId ? t : { ...t, responses: { ...t.responses, [modelId]: next } }) };
-      }));
-      if (data.quota) setQuota(prev => ({ ...prev, ...data.quota }));
     } catch (e) {
-      updateTurn(activeConversationId, turnId, {
-        responses: { ...turn.responses, [modelId]: { status: 'error', error: e.message || '失败' } },
-      });
+      setModelResponse(activeConversationId, turnId, modelId, { status: 'error', error: e.message || '失败' });
     }
-  }, [conversations, activeConversationId, models, hasSystemPrompt, systemPrompt, updateTurn]);
+  }, [conversations, activeConversationId, models, hasSystemPrompt, systemPrompt, appendModelChunk, setModelResponse]);
 
   const exportConversation = useCallback(async () => {
     if (!activeConversation) return;
@@ -416,35 +450,37 @@ export default function App() {
     const history = (conv.turns || []).map(turnToHistoryItem);
 
     try {
-      const data = await ask({
+      await askStream({
         question: q,
         systemPrompt: hasSystemPrompt ? systemPrompt : null,
         modelIds: enabledModels.map(m => m.id),
         summaryModelId,
         history,
         dimensions: showSummaryTab ? dimensions : undefined,
+        onEvent: (event, data) => {
+          if (event === 'quota') {
+            setQuota(prev => ({ ...prev, ...data }));
+          } else if (event === 'model_start') {
+            setModelResponse(convId, turnId, data.modelId, { status: 'streaming', text: '' });
+          } else if (event === 'model_chunk') {
+            appendModelChunk(convId, turnId, data.modelId, data.text);
+          } else if (event === 'model_done') {
+            setModelResponse(convId, turnId, data.modelId, { status: 'done', text: data.text, duration: data.duration, tokens: data.tokens });
+          } else if (event === 'model_error') {
+            setModelResponse(convId, turnId, data.modelId, { status: 'error', error: data.error });
+          } else if (event === 'summary_start') {
+            setTurnSummary(convId, turnId, { status: 'streaming', text: '', modelName: data.modelName });
+          } else if (event === 'summary_chunk') {
+            appendSummaryChunk(convId, turnId, data.text);
+          } else if (event === 'summary_done') {
+            setTurnSummary(convId, turnId, { status: 'done', text: data.text, duration: data.duration, modelName: data.modelName });
+          } else if (event === 'summary_error') {
+            setTurnSummary(convId, turnId, { status: 'error', error: data.error, modelName: data.modelName });
+          } else if (event === 'summary_insufficient') {
+            setTurnSummary(convId, turnId, { status: 'insufficient', successful: data.successful });
+          }
+        },
       });
-
-      const nextResponses = {};
-      (data.results || []).forEach(r => {
-        nextResponses[r.id] = r.ok
-          ? { status: 'done', text: r.text, duration: r.duration, tokens: r.tokens }
-          : { status: 'error', error: r.error };
-      });
-
-      let nextSummary = null;
-      if (data.summary) {
-        if (data.summary.ok) {
-          nextSummary = { status: 'done', text: data.summary.text, duration: data.summary.duration, modelName: data.summary.modelName };
-        } else if (data.summary.insufficient) {
-          nextSummary = { status: 'insufficient', successful: data.summary.successful };
-        } else {
-          nextSummary = { status: 'error', error: data.summary.error, modelName: data.summary.modelName };
-        }
-      }
-
-      updateTurn(convId, turnId, { responses: nextResponses, summary: nextSummary });
-      if (data.quota) setQuota(prev => ({ ...prev, ...data.quota }));
     } catch (e) {
       if (e.quotaExceeded) {
         setQuota({ used: e.data?.used ?? quota?.limit, limit: e.data?.limit ?? quota?.limit, remaining: 0 });
@@ -454,14 +490,26 @@ export default function App() {
       } else {
         setAskError({ type: 'network', message: e.message || '请求失败' });
       }
-      // 标记所有 loading 为 error
-      const errResponses = {};
-      enabledModels.forEach(m => { errResponses[m.id] = { status: 'error', error: e.message || '请求失败' }; });
-      updateTurn(convId, turnId, { responses: errResponses, summary: showSummaryTab ? { status: 'error', error: e.message } : null });
+      // 把仍在 loading/streaming 的模型标为 error
+      setConversations(prev => prev.map(c => {
+        if (c.id !== convId) return c;
+        return { ...c, turns: c.turns.map(t => {
+          if (t.id !== turnId) return t;
+          const nextResp = { ...t.responses };
+          for (const k of Object.keys(nextResp)) {
+            const s = nextResp[k]?.status;
+            if (s === 'loading' || s === 'streaming') nextResp[k] = { status: 'error', error: e.message || '请求失败' };
+          }
+          const nextSummary = t.summary && (t.summary.status === 'loading' || t.summary.status === 'streaming')
+            ? { ...t.summary, status: 'error', error: e.message }
+            : t.summary;
+          return { ...t, responses: nextResp, summary: nextSummary };
+        })};
+      }));
     } finally {
       setLoading(false);
     }
-  }, [question, loading, enabledModels, quota, systemPrompt, hasSystemPrompt, summaryModelId, showSummaryTab, activeConversationId, conversations, updateTurn, dimensions]);
+  }, [question, loading, enabledModels, quota, systemPrompt, hasSystemPrompt, summaryModelId, showSummaryTab, activeConversationId, conversations, dimensions, appendModelChunk, appendSummaryChunk, setModelResponse, setTurnSummary]);
 
   if (!modelsLoaded) return <FullPageLoader />;
 
@@ -947,6 +995,7 @@ function SummaryTab({ active, onClick, models, summary, loading }) {
 function ModelStatusIndicator({ state, color }) {
   if (!state) return <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#BFB8A8' }} />;
   if (state.status === 'loading') return <div className="w-1.5 h-1.5 rounded-full pulse-dot" style={{ background: color }} />;
+  if (state.status === 'streaming') return <div className="w-1.5 h-1.5 rounded-full pulse-dot" style={{ background: color }} />;
   if (state.status === 'error') return <div className="w-2.5 h-2.5 rounded-full flex items-center justify-center" style={{ background: '#dc2626' }}><X className="w-1.5 h-1.5 text-white" strokeWidth={3} /></div>;
   if (state.status === 'done') return <div className="w-2.5 h-2.5 rounded-full flex items-center justify-center" style={{ background: color }}><Check className="w-1.5 h-1.5 text-white" strokeWidth={3} /></div>;
   return <div className="w-1.5 h-1.5 rounded-full" style={{ background: '#BFB8A8' }} />;
@@ -1087,6 +1136,7 @@ function ResponseBlock({ model, state, collapsed, onToggleCollapse, onRetry }) {
         <div className="px-3 sm:px-5 py-3 sm:py-4">
           {!state && <div className="text-xs" style={{ color: '#9D9685' }}>此模型未参与本轮</div>}
           {state?.status === 'loading' && <LoadingState color={model.color} />}
+          {state?.status === 'streaming' && (state.text ? <StreamingText text={state.text} color={model.color} /> : <LoadingState color={model.color} />)}
           {state?.status === 'error' && <ErrorState message={state.error} onRetry={onRetry} />}
           {state?.status === 'done' && <ResponseText text={state.text} />}
         </div>
@@ -1148,6 +1198,7 @@ function SummaryBlock({ summary, summaryModelMeta, onSelectTab, collapsed, onTog
       {!collapsed && (
         <div className="px-3 sm:px-5 py-3 sm:py-4">
           {summary.status === 'loading' && <SummaryGenerating modelName={summaryModelMeta?.name} compact />}
+          {summary.status === 'streaming' && (summary.text ? <StreamingText text={summary.text} color="#CC785C" /> : <SummaryGenerating modelName={summary.modelName || summaryModelMeta?.name} compact />)}
           {summary.status === 'insufficient' && (
             <div className="text-xs" style={{ color: '#6F6E5E' }}>
               只有 {summary.successful?.length || 0} 个模型成功返回，无法对比。
@@ -1361,6 +1412,16 @@ function explodeInlineTable(line) {
     .map(s => s.trim())
     .filter(Boolean);
   return parts.length > 1 ? parts : [line];
+}
+
+// 流式期间用：纯文本 + 闪烁光标。等流结束转 ResponseText 完整 markdown
+function StreamingText({ text, color }) {
+  return (
+    <div className="fade-up text-[14px] leading-[1.75] whitespace-pre-wrap break-words" style={{ color: '#2A2620' }}>
+      {text}
+      <span className="streaming-cursor" style={{ background: color || '#CC785C' }} />
+    </div>
+  );
 }
 
 function ResponseText({ text }) {

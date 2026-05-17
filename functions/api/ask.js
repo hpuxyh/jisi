@@ -1,12 +1,10 @@
 import {
   MODELS, DAILY_LIMIT,
   getBeijingDate, getClientIp, quotaKey,
-  callModel, buildModelMessages, withTimeout, json,
+  callModelStream, buildModelMessages, json,
 } from '../_shared.js';
 
-const MODEL_TIMEOUT_MS = 300000;  // 单模型最长 5 分钟（深度思考型 + 多轮上下文）
-const SUMMARY_TIMEOUT_MS = 120000; // 对比分析最长 2 分钟
-const MAX_TURNS = 10;             // 单对话最大轮数
+const MAX_TURNS = 10; // 单对话最大轮数
 
 const DEFAULT_DIMENSIONS = [
   { title: '核心共识', hint: '所有模型一致的关键观点（如果没有就写"无明显共识"）' },
@@ -43,7 +41,6 @@ export async function onRequestPost(context) {
     return json({ error: 'KV 未绑定，请在 Pages 设置里绑定 QUOTA_KV' }, 500);
   }
 
-  // 1. 拿 IP + 日期 + 当日用量
   const ip = getClientIp(request);
   const date = getBeijingDate();
   const qKey = quotaKey(ip, date);
@@ -53,28 +50,17 @@ export async function onRequestPost(context) {
     return json({
       error: 'QUOTA_EXCEEDED',
       message: `今日 ${DAILY_LIMIT} 次配额已用完，明天再来吧 👋`,
-      used,
-      limit: DAILY_LIMIT,
+      used, limit: DAILY_LIMIT,
     }, 429);
   }
 
-  // 2. 解析请求
   let body;
-  try {
-    body = await request.json();
-  } catch (e) {
-    return json({ error: 'INVALID_JSON' }, 400);
-  }
+  try { body = await request.json(); } catch (e) { return json({ error: 'INVALID_JSON' }, 400); }
   const { question, systemPrompt, modelIds, summaryModelId, history, dimensions } = body || {};
 
-  if (!question || typeof question !== 'string' || !question.trim()) {
-    return json({ error: 'EMPTY_QUESTION' }, 400);
-  }
-  if (!Array.isArray(modelIds) || modelIds.length === 0) {
-    return json({ error: 'NO_MODELS_SELECTED' }, 400);
-  }
+  if (!question || typeof question !== 'string' || !question.trim()) return json({ error: 'EMPTY_QUESTION' }, 400);
+  if (!Array.isArray(modelIds) || modelIds.length === 0) return json({ error: 'NO_MODELS_SELECTED' }, 400);
 
-  // history 校验：必须是数组，长度 <= MAX_TURNS - 1（留 1 个位置给新提问）
   const safeHistory = Array.isArray(history) ? history : [];
   if (safeHistory.length >= MAX_TURNS) {
     return json({
@@ -84,78 +70,86 @@ export async function onRequestPost(context) {
     }, 400);
   }
 
-  // 3. 解析要调用的模型
   const targets = MODELS.filter(m => modelIds.includes(m.id));
-  if (targets.length === 0) {
-    return json({ error: 'NO_VALID_MODELS' }, 400);
-  }
+  if (targets.length === 0) return json({ error: 'NO_VALID_MODELS' }, 400);
 
-  // 4. 先记一次用量（即便后面失败，也算一次提问，防刷）
+  // 先记一次用量（即便后面失败，也算一次提问，防刷）
   const newUsed = used + 1;
-  await env.QUOTA_KV.put(qKey, String(newUsed), { expirationTtl: 90000 }); // 25 小时
+  await env.QUOTA_KV.put(qKey, String(newUsed), { expirationTtl: 90000 });
 
-  // 5. 并行调所有模型，每个独立超时，失败的不影响成功的
-  // 每个模型只看到自己之前的回答 + 全部历史问题
-  const results = await Promise.all(
-    targets.map(async (m) => {
-      try {
-        const messages = buildModelMessages(m.id, safeHistory, question);
-        const r = await withTimeout(
-          callModel(m, messages, systemPrompt, env),
-          MODEL_TIMEOUT_MS,
-          m.name,
-        );
-        return { id: m.id, name: m.name, ok: true, text: r.text, duration: r.duration, tokens: r.tokens };
-      } catch (e) {
-        return { id: m.id, name: m.name, ok: false, error: e?.message || String(e) };
+  // —— SSE 流式响应 ——
+  const encoder = new TextEncoder();
+  const stream = new ReadableStream({
+    async start(controller) {
+      let closed = false;
+      const send = (event, data) => {
+        if (closed) return;
+        try {
+          controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+        } catch (e) { /* ignore */ }
+      };
+      const close = () => {
+        if (closed) return;
+        closed = true;
+        try { controller.close(); } catch (e) {}
+      };
+
+      // 立即推一次配额（前端可以马上更新计数）
+      send('quota', { used: newUsed, limit: DAILY_LIMIT, remaining: Math.max(0, DAILY_LIMIT - newUsed) });
+
+      // 并行调所有模型
+      const modelPromises = targets.map(async (m) => {
+        send('model_start', { modelId: m.id });
+        try {
+          const messages = buildModelMessages(m.id, safeHistory, question);
+          const r = await callModelStream(m, messages, systemPrompt, env, (chunk) => {
+            send('model_chunk', { modelId: m.id, text: chunk });
+          });
+          send('model_done', { modelId: m.id, text: r.text, duration: r.duration, tokens: r.tokens });
+          return { id: m.id, name: m.name, ok: true, text: r.text };
+        } catch (e) {
+          send('model_error', { modelId: m.id, error: e?.message || String(e) });
+          return { id: m.id, name: m.name, ok: false, error: e?.message || String(e) };
+        }
+      });
+      const results = await Promise.all(modelPromises);
+
+      // 对比分析
+      const successful = results.filter(r => r.ok);
+      if (successful.length >= 2 && summaryModelId) {
+        const summaryConfig = MODELS.find(m => m.id === summaryModelId);
+        if (summaryConfig) {
+          send('summary_start', { modelName: summaryConfig.name });
+          try {
+            const r = await callModelStream(
+              summaryConfig,
+              buildSummaryPrompt(question, successful, dimensions),
+              null,
+              env,
+              (chunk) => send('summary_chunk', { text: chunk }),
+              { maxTokens: 2000 },
+            );
+            send('summary_done', { text: r.text, duration: r.duration, modelName: summaryConfig.name });
+          } catch (e) {
+            send('summary_error', { error: e?.message || String(e), modelName: summaryConfig.name });
+          }
+        }
+      } else if (successful.length < 2 && results.length >= 2) {
+        send('summary_insufficient', { successful: successful.map(r => ({ id: r.id, name: r.name })) });
       }
-    })
-  );
 
-  // 6. 至少 2 个成功 → 让对比分析模型出对比
-  let summary = null;
-  const successful = results.filter(r => r.ok);
-  if (successful.length >= 2 && summaryModelId) {
-    const summaryConfig = MODELS.find(m => m.id === summaryModelId);
-    if (summaryConfig) {
-      try {
-        const summaryRes = await withTimeout(
-          callModel(
-            summaryConfig,
-            buildSummaryPrompt(question, successful, dimensions),
-            null, // 对比分析不带用户的 system prompt
-            env,
-            { maxTokens: 2000 },
-          ),
-          SUMMARY_TIMEOUT_MS,
-          '对比分析',
-        );
-        summary = {
-          ok: true,
-          modelName: summaryConfig.name,
-          text: summaryRes.text,
-          duration: summaryRes.duration,
-        };
-      } catch (e) {
-        summary = { ok: false, error: e?.message || String(e), modelName: summaryConfig.name };
-      }
-    }
-  } else if (successful.length < 2 && results.length >= 2) {
-    summary = {
-      ok: false,
-      insufficient: true,
-      successful: successful.map(r => ({ id: r.id, name: r.name })),
-    };
-  }
+      send('end', {});
+      close();
+    },
+    cancel() { /* 客户端断开时清理 */ },
+  });
 
-  // 7. 返回完整结果
-  return json({
-    results,
-    summary,
-    quota: {
-      used: newUsed,
-      limit: DAILY_LIMIT,
-      remaining: Math.max(0, DAILY_LIMIT - newUsed),
+  return new Response(stream, {
+    headers: {
+      'Content-Type': 'text/event-stream; charset=utf-8',
+      'Cache-Control': 'no-cache, no-transform',
+      'Connection': 'keep-alive',
+      'X-Accel-Buffering': 'no',
     },
   });
 }
